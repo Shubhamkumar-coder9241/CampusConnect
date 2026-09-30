@@ -1,0 +1,7 @@
+export const pods = [
+  { id: 'dsa-sprint', topic: 'DSA Problem Solving Sprint', detail: 'Arrays & Linked Lists', goal: 'Solve 5 interview-level problems', host: 'Sana Kulkarni', members: 3, maxMembers: 5, duration: 50, status: 'Starting soon', level: 'Intermediate', time: 'Today · 7:00 PM', memberNames: ['Shubham', 'Aman', 'Sana'] },
+  { id: 'dbms-revision', topic: 'DBMS Revision Circle', detail: 'Normalization & SQL joins', goal: 'Revise core DBMS concepts', host: 'Neha Joshi', members: 2, maxMembers: 5, duration: 40, status: 'Open', level: 'All levels', time: 'Today · 8:00 PM', memberNames: ['Neha', 'Kabir'] },
+  { id: 'js-interview', topic: 'JavaScript Interview Prep', detail: 'Closures, promises & async', goal: 'Practice 8 common questions', host: 'Riya Deshmukh', members: 4, maxMembers: 6, duration: 60, status: 'Open', level: 'Intermediate', time: 'Tomorrow · 6:30 PM', memberNames: ['Riya', 'Aman', 'Sana', 'Kabir'] },
+  { id: 'react-sprint', topic: 'React Project Sprint', detail: 'Build a study tracker', goal: 'Ship one working feature', host: 'Rohan Mehta', members: 2, maxMembers: 4, duration: 50, status: 'Open', level: 'Beginner friendly', time: 'Tomorrow · 7:00 PM', memberNames: ['Rohan', 'Priya'] },
+  { id: 'math-pyq', topic: 'Engineering Maths PYQ', detail: 'Differential equations', goal: 'Solve the 2025 paper together', host: 'Priya Nair', members: 3, maxMembers: 5, duration: 45, status: 'Open', level: 'All levels', time: 'Friday · 5:00 PM', memberNames: ['Priya', 'Neha', 'Aman'] },
+]

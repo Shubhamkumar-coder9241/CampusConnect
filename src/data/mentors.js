@@ -1,0 +1,6 @@
+export const mentors = [
+  { id: 'sana', name: 'Sana Kulkarni', college: 'Government Polytechnic Pune', branch: 'CSE', semester: 6, skills: ['DSA', 'Java', 'Interview prep'], expertise: ['Placement', 'Programming', 'Exam Preparation'], experience: ['Placed at Persistent', 'Solved 180+ DSA problems'], availability: 'Evening', initials: 'SK', color: '#c1a7dc' },
+  { id: 'rohan', name: 'Rohan Mehta', college: 'AISSMS Polytechnic', branch: 'CSE', semester: 6, skills: ['React', 'Node.js', 'GitHub'], expertise: ['Project', 'Internship', 'Programming'], experience: ['Frontend intern', '2 shipped projects'], availability: 'Weekend', initials: 'RM', color: '#a6c9dd' },
+  { id: 'priya', name: 'Priya Nair', college: 'Pune Government Polytechnic', branch: 'IT', semester: 5, skills: ['Aptitude', 'C++', 'Communication'], expertise: ['Placement', 'Higher Studies', 'Exam Preparation'], experience: ['Placement drive volunteer', 'MHT-CET guidance'], availability: 'Evening', initials: 'PN', color: '#e8b59c' },
+  { id: 'aditya', name: 'Aditya Bhosale', college: 'Government Polytechnic Pune', branch: 'CSE', semester: 6, skills: ['Python', 'Flask', 'SQL'], expertise: ['Internship', 'Project', 'Programming'], experience: ['Python intern', 'Hackathon finalist'], availability: 'Morning', initials: 'AB', color: '#ddc67d' },
+]

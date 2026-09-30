@@ -1,0 +1,14 @@
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle2, Clock3, Map, Sparkles, Users } from 'lucide-react'
+import { Avatar, Badge, Button, Modal } from '../../components/ui.jsx'
+
+export default function SessionSummary({ pod, checkedCount, goalCount, studiedMinutes, onClose, onUpdateRoadmap }) {
+  const navigate = useNavigate()
+  return <Modal title="Study Session Complete" subtitle="A solid block of focus, shared." onClose={onClose}>
+    <div className="mb-5 flex items-center gap-3 rounded-2xl bg-[#edf5e8] p-4"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#49845b]"><Sparkles size={20} /></span><span><span className="block text-sm font-extrabold text-[#3e5943]">Great work. You completed {checkedCount}/{goalCount} goals.</span><span className="mt-1 block text-xs text-[#789078]">{pod.detail} · {pod.topic}</span></span></div>
+    <div className="grid grid-cols-3 gap-2"><div className="rounded-xl bg-[#f6f7f4] p-3 text-center"><Clock3 size={15} className="mx-auto mb-1.5 text-[#6e826f]" /><strong className="block text-sm text-[#48564b]">{studiedMinutes} min</strong><span className="text-[10px] text-[#909991]">studied</span></div><div className="rounded-xl bg-[#f6f7f4] p-3 text-center"><CheckCircle2 size={15} className="mx-auto mb-1.5 text-[#6e9a68]" /><strong className="block text-sm text-[#48564b]">{checkedCount}/{goalCount}</strong><span className="text-[10px] text-[#909991]">goals done</span></div><div className="rounded-xl bg-[#f6f7f4] p-3 text-center"><Users size={15} className="mx-auto mb-1.5 text-[#7185a4]" /><strong className="block text-sm text-[#48564b]">{pod.members}</strong><span className="text-[10px] text-[#909991]">members</span></div></div>
+    <div className="mt-4 flex items-center gap-2">{pod.memberNames.slice(0, 4).map((name, index) => <span key={name} className="flex items-center gap-1.5"><Avatar initials={name.split(' ').map((part) => part[0]).join('')} size="sm" color={['#b7d1b5', '#efc2a1', '#c7b4df', '#9ec4dc'][index]} /><span className="text-[10px] text-[#718076]">{name}</span></span>)}</div>
+    <div className="mt-4 rounded-xl border border-[#ece7d9] bg-[#fffaf1] p-3"><Badge tone="orange">SUGGESTED NEXT STEP</Badge><p className="mt-2 text-xs leading-5 text-[#786a4c]">Review two linked-list patterns, then revisit your React roadmap checkpoint.</p></div>
+    <div className="mt-5 flex gap-2"><Button className="flex-1" onClick={() => { onUpdateRoadmap({ title: pod.topic, duration: studiedMinutes }); onClose(); navigate('/roadmap') }}><Map size={15} />Update roadmap</Button><Button variant="outline" onClick={onClose}>Close</Button></div>
+  </Modal>
+}
