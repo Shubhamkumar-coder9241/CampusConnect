@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
 import { HomePage, DiscoverPage, MentorsPage, PodsPage, ResourceListPage, ResourceDetailPage, PulsePage, RoadmapPage, ProfilePage } from './pages/Pages.jsx'
 import PodRoom from './features/pod/PodRoom.jsx'
@@ -33,7 +33,7 @@ export default function App() {
 
   const appState = { connections, setConnections, mentorRequests, setMentorRequests, roadmap, setRoadmap, podList, setPodList, profile, setProfile, recentSessions, updateRoadmapFromSession, toast, setToast, darkMode, setDarkMode }
 
-  return <BrowserRouter><div className={darkMode ? 'app-shell dark-theme' : 'app-shell'}><Routes>
+  return <HashRouter><div className={darkMode ? 'app-shell dark-theme' : 'app-shell'}><Routes>
     <Route element={<Layout appState={appState} />}>
       <Route index element={<HomePage />} />
       <Route path="discover" element={<DiscoverPage />} />
@@ -47,5 +47,5 @@ export default function App() {
       <Route path="profile" element={<ProfilePage />} />
       <Route path="*" element={<HomePage />} />
     </Route>
-  </Routes></div></BrowserRouter>
+  </Routes></div></HashRouter>
 }

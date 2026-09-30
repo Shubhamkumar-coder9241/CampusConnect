@@ -23,3 +23,7 @@ npm run build
 - `src/components/` contains shared navigation and UI primitives.
 - `src/data/` contains local seed data; `src/lib/matching.js` calculates rule-based compatibility.
 - `src/index.css` loads Tailwind CSS v4 and the shared visual foundation.
+
+## GitHub Pages
+
+In the repository, open **Settings → Pages** and set the build source to **GitHub Actions**. The workflow builds with the `/CampusConnect/` base path and publishes `dist` on pushes to `main`. Routes use the URL hash so direct links and refreshes work on Pages.
