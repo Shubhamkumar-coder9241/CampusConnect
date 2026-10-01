@@ -27,3 +27,10 @@ npm run build
 ## GitHub Pages
 
 In the repository, open **Settings → Pages** and set the build source to **GitHub Actions**. The workflow builds with the `/CampusConnect/` base path and publishes `dist` on pushes to `main`. Routes use the URL hash so direct links and refreshes work on Pages.
+
+Before deploying, add these repository secrets under **Settings → Secrets and variables → Actions**:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Also add the deployed project URL to Supabase under **Authentication → URL Configuration**. For a repository named `CampusConnect`, use `https://YOUR-USERNAME.github.io/CampusConnect/` as the Site URL and allow `https://YOUR-USERNAME.github.io/CampusConnect/**` as a redirect URL. Keep `http://localhost:5173` entries for local development.
