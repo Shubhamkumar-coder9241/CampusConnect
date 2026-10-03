@@ -6,7 +6,6 @@ import ProfilePage from './pages/ProfilePage.jsx'
 import { LoginPage, SignupPage } from './pages/AuthPages.jsx'
 import PodRoom from './features/pod/PodRoom.jsx'
 import { roadmapSeed, recentSessionsSeed } from './data/roadmap.js'
-import { pods as podSeed } from './data/pods.js'
 import { currentStudent } from './data/students.js'
 import { supabase } from './lib/supabaseClient.js'
 
@@ -73,7 +72,9 @@ export default function App() {
   const [connections, setConnections] = useState({})
   const [mentorRequests, setMentorRequests] = useState({})
   const [roadmap, setRoadmap] = useState(roadmapSeed)
-  const [podList, setPodList] = useState(podSeed)
+  const [podList, setPodList] = useState([])
+  const [podLoading, setPodLoading] = useState(true)
+  const [podError, setPodError] = useState('')
   const [profile, setProfile] = useState(currentStudent)
   const [availableSkills, setAvailableSkills] = useState([])
   const [availableSubjects, setAvailableSubjects] = useState([])
@@ -158,6 +159,95 @@ export default function App() {
   }, [session])
 
   useEffect(() => {
+    let mounted = true
+    async function loadPods() {
+      if (!session?.user) {
+        setPodList([])
+        setPodLoading(false)
+        setPodError('')
+        return
+      }
+      setPodLoading(true)
+      setPodError('')
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError) throw authError
+        if (!user) throw new Error('Your session could not be verified.')
+        const { data: podRows, error: podsError } = await supabase.from('study_pods')
+          .select('id, name, topic, goal, description, max_members, created_by, created_at')
+          .order('created_at', { ascending: false })
+        if (podsError) throw podsError
+        const ids = (podRows || []).map((pod) => pod.id)
+        const { data: memberRows, error: membersError } = ids.length
+          ? await supabase.from('study_pod_members').select('pod_id, user_id, role').in('pod_id', ids)
+          : { data: [], error: null }
+        if (membersError) throw membersError
+        const profileIds = [...new Set([
+          ...(podRows || []).map((pod) => pod.created_by),
+          ...(memberRows || []).map((member) => member.user_id),
+        ])]
+        const { data: profileRows, error: profilesError } = profileIds.length
+          ? await supabase.from('profiles').select('id, name, avatar_url').in('id', profileIds)
+          : { data: [], error: null }
+        if (profilesError) throw profilesError
+        const profilesById = new Map((profileRows || []).map((profileRow) => [profileRow.id, profileRow]))
+        const membersByPod = new Map()
+        for (const member of memberRows || []) {
+          membersByPod.set(member.pod_id, [...(membersByPod.get(member.pod_id) || []), member])
+        }
+        const colors = ['#9cc7b1', '#efc2a1', '#c7b4df', '#9ec4dc']
+        const mappedPods = (podRows || []).map((pod) => {
+          const members = (membersByPod.get(pod.id) || []).map((member, index) => {
+            const memberProfile = profilesById.get(member.user_id)
+            const name = memberProfile?.name || 'Member'
+            return {
+              id: member.user_id,
+              name,
+              initials: name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join(''),
+              color: colors[index % colors.length],
+              avatarUrl: memberProfile?.avatar_url || null,
+              role: member.role,
+            }
+          })
+          const creator = profilesById.get(pod.created_by)
+          return {
+            id: pod.id,
+            name: pod.name,
+            topic: pod.name,
+            detail: [pod.topic, pod.description].filter(Boolean).join(' · '),
+            goal: pod.goal || '',
+            description: pod.description || '',
+            host: creator?.name || 'Pod host',
+            creatorId: pod.created_by,
+            members: members.length,
+            maxMembers: pod.max_members,
+            duration: 50,
+            status: 'Open',
+            level: 'All levels',
+            time: pod.created_at ? new Date(pod.created_at).toLocaleDateString() : '',
+            memberProfiles: members,
+            memberNames: members.map((member) => member.name),
+            isMember: members.some((member) => member.id === user.id),
+          }
+        })
+        if (mounted) {
+          setPodList(mappedPods)
+          setPodLoading(false)
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) console.error('Unable to load study pods:', error)
+        if (mounted) {
+          setPodList([])
+          setPodError('We could not load study pods right now. Please try again in a moment.')
+          setPodLoading(false)
+        }
+      }
+    }
+    loadPods()
+    return () => { mounted = false }
+  }, [session])
+
+  useEffect(() => {
     if (!toast) return undefined
     const timer = window.setTimeout(() => setToast(null), 3200)
     return () => window.clearTimeout(timer)
@@ -196,7 +286,7 @@ export default function App() {
     if (error) setToast({ type: 'error', message: 'Unable to log out. Please try again.' })
   }
 
-  const appState = { session, authUser: session?.user, connections, setConnections, mentorRequests, setMentorRequests, roadmap, setRoadmap, podList, setPodList, profile, setProfile, availableSkills, availableSubjects, saveProfile, recentSessions, updateRoadmapFromSession, logout, toast, setToast, darkMode, setDarkMode }
+  const appState = { session, authUser: session?.user, connections, setConnections, mentorRequests, setMentorRequests, roadmap, setRoadmap, podList, setPodList, podLoading, podError, profile, setProfile, availableSkills, availableSubjects, saveProfile, recentSessions, updateRoadmapFromSession, logout, toast, setToast, darkMode, setDarkMode }
 
   return <HashRouter><div className={darkMode ? 'app-shell dark-theme' : 'app-shell'}><Routes>
     <Route path="/login" element={<PublicRoute session={session} authLoading={authLoading}><LoginPage /></PublicRoute>} />
