@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Link,
   useNavigate,
@@ -31,6 +31,7 @@ import FocusTimer from "./FocusTimer.jsx";
 import GoalChecklist from "./GoalChecklist.jsx";
 import PodChat from "./PodChat.jsx";
 import SessionSummary from "./SessionSummary.jsx";
+import { supabase } from "../../lib/supabaseClient.js";
 
 const goals = [
   "Revise array operations",
@@ -39,33 +40,6 @@ const goals = [
   "Discuss one difficult problem",
   "Write final notes",
 ];
-const seedMessages = [
-  {
-    id: "m1",
-    name: "Aman",
-    initials: "AK",
-    color: "#9cc7b1",
-    text: "Has anyone solved the sliding window problem?",
-    time: "6:54 PM",
-  },
-  {
-    id: "m2",
-    name: "Sana",
-    initials: "SK",
-    color: "#c1a7dc",
-    text: "I’m trying it now. Start with the smallest valid window.",
-    time: "6:56 PM",
-  },
-  {
-    id: "m3",
-    name: "Aman",
-    initials: "AK",
-    color: "#9cc7b1",
-    text: "Let’s discuss after the sprint.",
-    time: "6:57 PM",
-  },
-];
-
 export default function PodRoom() {
   const { podId } = useParams();
   const navigate = useNavigate();
@@ -76,6 +50,7 @@ export default function PodRoom() {
     podLoading,
     podError,
     authUser,
+    profile,
     joinStudyPod,
     leaveStudyPod,
   } = useOutletContext();
@@ -106,7 +81,17 @@ export default function PodRoom() {
     }
   }
   const [checked, setChecked] = useState([0]);
-  const [messages, setMessages] = useState(seedMessages);
+  const [chatState, setChatState] = useState({ podId: null, messages: [] });
+  const [chatLoadState, setChatLoadState] = useState({ podId: null, loading: true });
+  const [chatSending, setChatSending] = useState(false);
+  const [chatErrorState, setChatErrorState] = useState({ podId: null, message: "" });
+  const messageIdsByPodRef = useRef(new Map());
+  const appendChatRowsRef = useRef(null);
+  const chatSendingRef = useRef(false);
+  const messages = chatState.podId === podId ? chatState.messages : [];
+  const chatLoading = chatLoadState.podId !== podId || chatLoadState.loading;
+  const chatError = chatErrorState.podId === podId ? chatErrorState.message : "";
+  const podAvailable = Boolean(pod);
   const [camera, setCamera] = useState(false);
   const [microphone, setMicrophone] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -137,6 +122,155 @@ export default function PodRoom() {
       role: "member",
     }));
   }, [pod, authUser?.id]);
+
+  useEffect(() => {
+    let active = true;
+    let initialLoadStarted = false;
+    const profileById = new Map();
+    const seenMessageIds = messageIdsByPodRef.current.get(podId) || new Set();
+    messageIdsByPodRef.current.set(podId, seenMessageIds);
+    if (authUser?.id && profile?.name) {
+      profileById.set(authUser.id, {
+        id: authUser.id,
+        name: profile.name,
+        initials: profile.initials,
+        color: profile.color,
+        avatarUrl: profile.avatar_url,
+      });
+    }
+
+    if (podLoading || !podAvailable || !authUser?.id) {
+      return () => { active = false; };
+    }
+
+    async function mapMessageRows(rows) {
+      const missingProfileIds = [...new Set(rows
+        .map((row) => row.sender_id)
+        .filter((senderId) => senderId && !profileById.has(senderId)))];
+      if (missingProfileIds.length) {
+        const { data: senderProfiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, name, avatar_url")
+          .in("id", missingProfileIds);
+        if (profilesError) {
+          if (import.meta.env.DEV) console.warn("Unable to load chat sender profiles:", profilesError);
+        } else {
+          for (const senderProfile of senderProfiles || []) {
+            profileById.set(senderProfile.id, senderProfile);
+          }
+        }
+      }
+      return rows.map((row) => {
+        const sender = profileById.get(row.sender_id);
+        const name = sender?.name || "Pod member";
+        const initials = sender?.initials || name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("") || "?";
+        return {
+          id: row.id,
+          senderId: row.sender_id,
+          name,
+          initials,
+          color: sender?.color || "#9cc7b1",
+          text: row.message,
+          createdAt: row.created_at,
+          time: row.created_at ? new Date(row.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "",
+          self: row.sender_id === authUser.id,
+        };
+      });
+    }
+
+    async function appendRows(rows) {
+      if (!active || !rows?.length) return;
+      const mappedRows = await mapMessageRows(rows);
+      if (!active) return;
+      const unseenRows = mappedRows.filter((message) => !seenMessageIds.has(message.id));
+      unseenRows.forEach((message) => seenMessageIds.add(message.id));
+      if (unseenRows.length) {
+        setChatState((current) => ({
+          podId,
+          messages: [...(current.podId === podId ? current.messages : []), ...unseenRows]
+            .sort((first, second) => Date.parse(first.createdAt) - Date.parse(second.createdAt)),
+        }));
+      }
+    }
+    appendChatRowsRef.current = appendRows;
+
+    async function loadMessages() {
+      if (initialLoadStarted) return;
+      initialLoadStarted = true;
+      try {
+        const { data, error } = await supabase
+          .from("study_pod_messages")
+          .select("id, pod_id, sender_id, message, created_at")
+          .eq("pod_id", podId)
+          .order("created_at", { ascending: true });
+        if (error) throw error;
+        await appendRows(data || []);
+      } catch (error) {
+        if (import.meta.env.DEV) console.error("Unable to load pod messages:", error);
+        if (active) setChatErrorState({ podId, message: "Pod messages could not be loaded. Please try again." });
+      } finally {
+        if (active) setChatLoadState({ podId, loading: false });
+      }
+    }
+
+    const channel = supabase
+      .channel(`study-pod-messages:${podId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "study_pod_messages",
+        filter: `pod_id=eq.${podId}`,
+      }, (payload) => {
+        appendRows([payload.new]).catch((error) => {
+          if (import.meta.env.DEV) console.error("Unable to process new pod message:", error);
+          if (active) setChatErrorState({ podId, message: "A new message could not be displayed." });
+        });
+      })
+      .subscribe((status, error) => {
+        if (!active) return;
+        if (status === "SUBSCRIBED") loadMessages();
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          if (import.meta.env.DEV) console.error("Pod chat realtime subscription failed:", error);
+          setChatErrorState({ podId, message: "Live chat connection failed. Loading saved messages only." });
+          loadMessages();
+          setChatLoadState({ podId, loading: false });
+        }
+      });
+
+    return () => {
+      active = false;
+      appendChatRowsRef.current = null;
+      supabase.removeChannel(channel);
+    };
+  }, [podId, podAvailable, podLoading, podError, authUser?.id, profile?.name, profile?.initials, profile?.color, profile?.avatar_url]);
+
+  async function sendChatMessage(text) {
+    const trimmedMessage = text.trim();
+    if (!trimmedMessage || chatSendingRef.current || !pod) return false;
+    chatSendingRef.current = true;
+    setChatSending(true);
+    setChatErrorState({ podId, message: "" });
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!user) throw new Error("Sign in to send a message.");
+      const { data, error } = await supabase
+        .from("study_pod_messages")
+        .insert({ pod_id: pod.id, sender_id: user.id, message: trimmedMessage })
+        .select("id, pod_id, sender_id, message, created_at")
+        .single();
+      if (error) throw error;
+      await appendChatRowsRef.current?.([data]);
+      return true;
+    } catch (error) {
+      if (import.meta.env.DEV) console.error("Unable to send pod message:", error);
+      setChatErrorState({ podId, message: "Your message could not be sent. Please try again." });
+      return false;
+    } finally {
+      chatSendingRef.current = false;
+      setChatSending(false);
+    }
+  }
 
   if (!pod)
     return podLoading ? (
@@ -374,23 +508,10 @@ export default function PodRoom() {
         <Card className="overflow-hidden xl:sticky xl:top-[88px]">
           <PodChat
             messages={messages}
-            onSend={(text) =>
-              setMessages((value) => [
-                ...value,
-                {
-                  id: `m-${Date.now()}`,
-                  name: "Shubham",
-                  initials: "SP",
-                  color: "#e8b784",
-                  text,
-                  time: new Date().toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  }),
-                  self: true,
-                },
-              ])
-            }
+            onSend={sendChatMessage}
+            loading={chatLoading}
+            sending={chatSending}
+            error={chatError}
           />
         </Card>
       </div>
