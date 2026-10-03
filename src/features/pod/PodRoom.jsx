@@ -9,15 +9,8 @@ import {
   ArrowLeft,
   Check,
   Flag,
-  Headphones,
   LoaderCircle,
-  Mic,
-  MicOff,
-  MonitorUp,
   Users,
-  Video as VideoIcon,
-  VideoOff,
-  Wifi,
 } from "lucide-react";
 import {
   Avatar,
@@ -31,6 +24,7 @@ import FocusTimer from "./FocusTimer.jsx";
 import GoalChecklist from "./GoalChecklist.jsx";
 import PodChat from "./PodChat.jsx";
 import SessionSummary from "./SessionSummary.jsx";
+import StudyPodVideoRoom from "./StudyPodVideoRoom.jsx";
 import { supabase } from "../../lib/supabaseClient.js";
 
 const goals = [
@@ -92,9 +86,6 @@ export default function PodRoom() {
   const chatLoading = chatLoadState.podId !== podId || chatLoadState.loading;
   const chatError = chatErrorState.podId === podId ? chatErrorState.message : "";
   const podAvailable = Boolean(pod);
-  const [camera, setCamera] = useState(false);
-  const [microphone, setMicrophone] = useState(false);
-  const [sharing, setSharing] = useState(false);
   const [summary, setSummary] = useState(false);
   const [finished, setFinished] = useState(false);
   const [minutesStudied, setMinutesStudied] = useState(0);
@@ -392,64 +383,15 @@ export default function PodRoom() {
                   A quiet place to work side-by-side
                 </p>
               </div>
-              <Badge tone="gray">
-                <Wifi size={11} />
-                Mock integration
-              </Badge>
+              <Badge tone="gray">LiveKit</Badge>
             </div>
-            <div className="grid gap-4 p-4 sm:grid-cols-[1fr_200px] sm:p-5">
-              <div className="soft-grid flex min-h-[150px] flex-col items-center justify-center rounded-2xl bg-[#edf2ea] p-4 text-center">
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-[#4b7955]">
-                  <Headphones size={21} />
-                </span>
-                <p className="mt-3 text-sm font-bold text-[#46574a]">
-                  Focus room is ready
-                </p>
-                <p className="mt-1 max-w-xs text-[10px] leading-4 text-[#849185]">
-                  Camera, microphone and screen sharing can connect here later
-                  using LiveKit or ZegoCloud.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-1">
-                {[
-                  {
-                    label: "Camera",
-                    active: camera,
-                    icon: camera ? VideoIcon : VideoOff,
-                    set: setCamera,
-                  },
-                  {
-                    label: "Microphone",
-                    active: microphone,
-                    icon: microphone ? Mic : MicOff,
-                    set: setMicrophone,
-                  },
-                  {
-                    label: "Screen share",
-                    active: sharing,
-                    icon: MonitorUp,
-                    set: setSharing,
-                  },
-                ].map(({ label, active, icon: Icon, set }) => (
-                  <button
-                    key={label}
-                    onClick={() => {
-                      set((value) => !value);
-                      setToast({
-                        type: "info",
-                        message: `${label} ${active ? "off" : "on"} in this mock room.`,
-                      });
-                    }}
-                    className={`flex items-center justify-center gap-2 rounded-xl border px-2 py-2 text-[10px] font-semibold transition-colors sm:justify-start sm:px-3 sm:text-xs ${active ? "border-[#9fc3a0] bg-[#edf6ec] text-[#35714d]" : "border-[#e8ece6] text-[#737f75] hover:bg-[#f7f9f6]"}`}
-                  >
-                    <Icon size={15} />
-                    {label}
-                    <span
-                      className={`ml-auto hidden h-1.5 w-1.5 rounded-full sm:block ${active ? "bg-[#59a56a]" : "bg-[#c9d0c8]"}`}
-                    />
-                  </button>
-                ))}
-              </div>
+            <div className="p-4 sm:p-5">
+              <StudyPodVideoRoom
+                podId={pod.id}
+                isMember={joined}
+                authUser={authUser}
+                profile={profile}
+              />
             </div>
           </Card>
           <Card className="p-5">
