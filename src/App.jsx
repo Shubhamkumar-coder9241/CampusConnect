@@ -11,6 +11,17 @@ import { supabase } from './lib/supabaseClient.js'
 
 const profileColumns = 'id, name, college, branch, semester, career_goal, interests, preferred_study_time, bio, avatar_url, created_at, updated_at'
 
+function logStudyPodSupabaseError(operation, error) {
+  if (!import.meta.env.DEV) return
+  console.error(`Supabase ${operation} failed:`, {
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+    code: error?.code,
+    error,
+  })
+}
+
 function initialsFor(name) {
   return name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join('') || currentStudent.initials
 }
@@ -189,7 +200,7 @@ export default function App() {
         const { data: profileRows, error: profilesError } = profileIds.length
           ? await supabase.from('profiles').select('id, name, avatar_url').in('id', profileIds)
           : { data: [], error: null }
-        if (profilesError) throw profilesError
+        if (profilesError && import.meta.env.DEV) console.warn('Unable to load pod member profile details:', profilesError)
         const profilesById = new Map((profileRows || []).map((profileRow) => [profileRow.id, profileRow]))
         const membersByPod = new Map()
         for (const member of memberRows || []) {
@@ -253,6 +264,113 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  async function createStudyPod({ name, topic, goal, description, maxMembers, duration }) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      if (authError) logStudyPodSupabaseError('auth.getUser before study_pods insert', authError)
+      throw new Error('Please sign in to create a study pod.')
+    }
+    const { data: pod, error: podError } = await supabase.from('study_pods').insert({
+      name,
+      topic,
+      goal: goal || null,
+      description: description || null,
+      max_members: maxMembers,
+      created_by: user.id,
+    }).select('id, name, topic, goal, description, max_members, created_by, created_at').single()
+    if (podError) {
+      logStudyPodSupabaseError('study_pods insert', podError)
+      throw podError
+    }
+    const { error: membershipError } = await supabase.from('study_pod_members').insert({
+      pod_id: pod.id,
+      user_id: user.id,
+      role: 'owner',
+    })
+    if (membershipError) {
+      logStudyPodSupabaseError('study_pod_members owner insert', membershipError)
+      const { error: rollbackError } = await supabase.from('study_pods').delete().eq('id', pod.id).eq('created_by', user.id)
+      if (rollbackError) logStudyPodSupabaseError('study_pods rollback after owner membership failure', rollbackError)
+      throw new Error('The pod could not be fully created because owner membership failed.')
+    }
+    const creatorName = profile.name || user.user_metadata?.name || 'You'
+    const member = { id: user.id, name: creatorName, initials: profile.initials, color: profile.color, role: 'owner' }
+    const createdPod = {
+      id: pod.id,
+      name: pod.name,
+      topic: pod.name,
+      detail: [pod.topic, pod.description].filter(Boolean).join(' · '),
+      goal: pod.goal || '',
+      description: pod.description || '',
+      host: creatorName,
+      creatorId: pod.created_by,
+      members: 1,
+      maxMembers: pod.max_members,
+      duration: duration || 50,
+      status: 'Open',
+      level: 'All levels',
+      time: pod.created_at ? new Date(pod.created_at).toLocaleDateString() : '',
+      memberProfiles: [member],
+      memberNames: [creatorName],
+      isMember: true,
+    }
+    setPodList((pods) => [createdPod, ...pods.filter((item) => item.id !== pod.id)])
+    return createdPod
+  }
+
+  async function joinStudyPod(podId) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) throw new Error('Please sign in to join a study pod.')
+    const pod = podList.find((item) => item.id === podId)
+    if (!pod) throw new Error('This study pod is no longer available.')
+    const { data: existing, error: existingError } = await supabase.from('study_pod_members')
+      .select('user_id, role').eq('pod_id', podId).eq('user_id', user.id).maybeSingle()
+    if (existingError) throw existingError
+    if (existing) {
+      setPodList((pods) => pods.map((item) => item.id === podId ? { ...item, isMember: true } : item))
+      return { alreadyMember: true }
+    }
+    const { count, error: countError } = await supabase.from('study_pod_members')
+      .select('user_id', { count: 'exact', head: true }).eq('pod_id', podId)
+    if (countError) throw countError
+    const memberCount = count ?? pod.members
+    if (memberCount >= pod.maxMembers) throw new Error('This study pod is full.')
+    const { error: insertError } = await supabase.from('study_pod_members').insert({
+      pod_id: podId,
+      user_id: user.id,
+      role: 'member',
+    })
+    if (insertError?.code === '23505') {
+      setPodList((pods) => pods.map((item) => item.id === podId ? { ...item, isMember: true } : item))
+      return { alreadyMember: true }
+    }
+    if (insertError) throw insertError
+    const name = profile.name || user.user_metadata?.name || 'You'
+    const member = { id: user.id, name, initials: profile.initials, color: profile.color, role: 'member' }
+    setPodList((pods) => pods.map((item) => item.id === podId ? {
+      ...item,
+      members: memberCount + 1,
+      isMember: true,
+      memberProfiles: [...(item.memberProfiles || []), member],
+      memberNames: [...(item.memberNames || []), name],
+    } : item))
+    return { alreadyMember: false }
+  }
+
+  async function leaveStudyPod(podId) {
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) throw new Error('Please sign in to leave a study pod.')
+    const { error } = await supabase.from('study_pod_members').delete().eq('pod_id', podId).eq('user_id', user.id)
+    if (error) throw error
+    setPodList((pods) => pods.map((pod) => pod.id === podId ? {
+      ...pod,
+      members: Math.max(0, pod.members - 1),
+      isMember: false,
+      memberProfiles: (pod.memberProfiles || []).filter((member) => member.id !== user.id),
+      memberNames: (pod.memberNames || []).filter((memberName) => memberName !== profile.name),
+    } : pod))
+  }
+
   function updateRoadmapFromSession(session) {
     setRoadmap((items) => items.map((item) => item.id === 'react'
       ? { ...item, progress: Math.min(100, item.progress + 8), status: item.progress + 8 >= 100 ? 'Completed' : 'In progress' }
@@ -286,7 +404,7 @@ export default function App() {
     if (error) setToast({ type: 'error', message: 'Unable to log out. Please try again.' })
   }
 
-  const appState = { session, authUser: session?.user, connections, setConnections, mentorRequests, setMentorRequests, roadmap, setRoadmap, podList, setPodList, podLoading, podError, profile, setProfile, availableSkills, availableSubjects, saveProfile, recentSessions, updateRoadmapFromSession, logout, toast, setToast, darkMode, setDarkMode }
+  const appState = { session, authUser: session?.user, connections, setConnections, mentorRequests, setMentorRequests, roadmap, setRoadmap, podList, setPodList, podLoading, podError, createStudyPod, joinStudyPod, leaveStudyPod, profile, setProfile, availableSkills, availableSubjects, saveProfile, recentSessions, updateRoadmapFromSession, logout, toast, setToast, darkMode, setDarkMode }
 
   return <HashRouter><div className={darkMode ? 'app-shell dark-theme' : 'app-shell'}><Routes>
     <Route path="/login" element={<PublicRoute session={session} authLoading={authLoading}><LoginPage /></PublicRoute>} />

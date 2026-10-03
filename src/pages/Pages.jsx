@@ -28,8 +28,24 @@ function PersonCard({ person, mentor = false, onConnect, onProfile, sent = false
 
 function PodCard({ pod }) {
   const navigate = useNavigate()
+  const { joinStudyPod, setToast } = useOutletContext()
+  const [joining, setJoining] = useState(false)
   const joined = Boolean(pod.isMember)
-  return <Card className="flex flex-col p-5"><div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf5e9] text-[#42764f]"><Code2 size={19} /></span><Badge tone={pod.status === 'Starting soon' ? 'orange' : 'green'}>{pod.status === 'Starting soon' ? '● Starting soon' : '● Open'}</Badge></div><h3 className="mt-4 text-base font-extrabold text-[#304136]">{pod.topic}</h3><p className="mt-1 text-sm text-[#78847a]">{pod.detail}</p><div className="mt-4 space-y-2 text-xs text-[#66746a]"><p className="flex items-center gap-2"><Target size={14} className="text-[#809386]" />{pod.goal}</p><p className="flex items-center gap-2"><Clock3 size={14} className="text-[#809386]" />{pod.duration} min · {pod.time}</p><p className="flex items-center gap-2"><Users size={14} className="text-[#809386]" />Hosted by {pod.host}</p></div><div className="mt-auto flex items-center justify-between border-t border-[#edf0eb] pt-4"><div className="flex -space-x-2">{pod.memberNames.slice(0, 4).map((name, i) => <Avatar key={name} initials={name.split(' ').map((part) => part[0]).join('')} size="sm" color={['#b7d1b5', '#efc2a1', '#c7b4df', '#9ec4dc'][i]} />)}<span className="ml-3 self-center text-xs text-[#828d84]">{pod.members}/{pod.maxMembers}</span></div><Button size="sm" variant={joined ? 'soft' : 'primary'} onClick={() => navigate(`/pods/${pod.id}`)}>{joined ? 'Open room' : 'Join pod'}<ArrowRight size={13} /></Button></div></Card>
+  async function onJoin() {
+    if (joining || joined) return
+    setJoining(true)
+    try {
+      const result = await joinStudyPod(pod.id)
+      setToast({ type: result.alreadyMember ? 'info' : 'success', message: result.alreadyMember ? 'You are already a member of this study pod.' : `You joined ${pod.name}.` })
+      navigate(`/pods/${pod.id}`)
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('Unable to join study pod:', error)
+      setToast({ type: 'error', message: error.message === 'This study pod is full.' ? error.message : 'We could not join that study pod. Please try again.' })
+    } finally {
+      setJoining(false)
+    }
+  }
+  return <Card className="flex flex-col p-5"><div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#edf5e9] text-[#42764f]"><Code2 size={19} /></span><Badge tone={pod.status === 'Starting soon' ? 'orange' : 'green'}>{pod.status === 'Starting soon' ? '● Starting soon' : '● Open'}</Badge></div><h3 className="mt-4 text-base font-extrabold text-[#304136]">{pod.topic}</h3><p className="mt-1 text-sm text-[#78847a]">{pod.detail}</p><div className="mt-4 space-y-2 text-xs text-[#66746a]"><p className="flex items-center gap-2"><Target size={14} className="text-[#809386]" />{pod.goal}</p><p className="flex items-center gap-2"><Clock3 size={14} className="text-[#809386]" />{pod.duration} min · {pod.time}</p><p className="flex items-center gap-2"><Users size={14} className="text-[#809386]" />Hosted by {pod.host}</p></div><div className="mt-auto flex items-center justify-between border-t border-[#edf0eb] pt-4"><div className="flex -space-x-2">{pod.memberNames.slice(0, 4).map((name, i) => <Avatar key={name} initials={name.split(' ').map((part) => part[0]).join('')} size="sm" color={['#b7d1b5', '#efc2a1', '#c7b4df', '#9ec4dc'][i]} />)}<span className="ml-3 self-center text-xs text-[#828d84]">{pod.members}/{pod.maxMembers}</span></div><Button size="sm" variant={joined ? 'soft' : 'primary'} onClick={() => joined ? navigate(`/pods/${pod.id}`) : onJoin(pod)} disabled={joining || (!joined && pod.members >= pod.maxMembers)}>{joining ? <><LoaderCircle size={13} className="animate-spin" />Joining</> : joined ? 'Open room' : pod.members >= pod.maxMembers ? 'Full' : 'Join pod'}{!joining && <ArrowRight size={13} />}</Button></div></Card>
 }
 
 function ResourceCard({ resource }) {
@@ -391,26 +407,186 @@ export function MentorsPage() {
 }
 
 export function PodsPage() {
-  const { podList, setPodList, setToast, podLoading, podError } = useOutletContext()
-  const navigate = useNavigate()
-  const [query, setQuery] = useState('')
-  const [level, setLevel] = useState('All levels')
-  const [creating, setCreating] = useState(false)
-  const [title, setTitle] = useState('')
-  const [goal, setGoal] = useState('')
-  const [duration, setDuration] = useState('50')
-  const visible = podList.filter((pod) => `${pod.topic} ${pod.detail}`.toLowerCase().includes(query.toLowerCase()) && (level === 'All levels' || pod.level === level))
+  const { podList, setToast, podLoading, podError, createStudyPod } =
+    useOutletContext();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [level, setLevel] = useState("All levels");
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [goal, setGoal] = useState("");
+  const [duration, setDuration] = useState("50");
+  const [saving, setSaving] = useState(false);
+  const visible = podList.filter(
+    (pod) =>
+      `${pod.topic} ${pod.detail}`
+        .toLowerCase()
+        .includes(query.toLowerCase()) &&
+      (level === "All levels" || pod.level === level),
+  );
+  const runningPods = visible.filter(
+    (pod) => String(pod.status).toLowerCase() === "running",
+  );
+  const upcomingPods = visible.filter(
+    (pod) => String(pod.status).toLowerCase() !== "running",
+  );
   function createPod(event) {
-    event.preventDefault()
-    const created = { id: `pod-${Date.now()}`, topic: title.trim(), detail: 'Focused study session', goal: goal.trim(), host: 'Shubham Patil', members: 1, maxMembers: 5, duration: Number(duration), status: 'Open', level: 'All levels', time: 'Just now', memberNames: ['Shubham'] }
-    setPodList((items) => [created, ...items])
-    setCreating(false)
-    setToast({ type: 'success', message: `${created.topic} is ready. Invite a study partner to join.` })
-    navigate(`/pods/${created.id}`)
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    async function save() {
+      try {
+        const created = await createStudyPod({
+          name: title.trim(),
+          topic: title.trim(),
+          goal: goal.trim(),
+          description: "",
+          maxMembers: 6,
+          duration: Number(duration),
+        });
+        setCreating(false);
+        setTitle("");
+        setGoal("");
+        setToast({
+          type: "success",
+          message: `${created.name} is ready. You are the pod host.`,
+        });
+        navigate(`/pods/${created.id}`);
+      } catch (error) {
+        if (import.meta.env.DEV)
+          console.error("Unable to create study pod:", error);
+        setToast({
+          type: "error",
+          message: "We could not create the study pod. Please try again.",
+        });
+      } finally {
+        setSaving(false);
+      }
+    }
+    save();
   }
-  if (podLoading) return <div className="fade-up"><PageHeading eyebrow="Better together" title="Study Pods" subtitle="Small, focused study sessions with students who are working toward the same thing." /><div className="flex items-center justify-center gap-2 rounded-2xl border border-[#e8ede7] bg-white px-6 py-14 text-sm font-semibold text-[#397950]"><LoaderCircle size={18} className="animate-spin" />Loading study pods...</div></div>
-  if (podError) return <div className="fade-up"><PageHeading eyebrow="Better together" title="Study Pods" subtitle="Small, focused study sessions with students who are working toward the same thing." /><EmptyState icon={Users} title="Study pods are unavailable" description={podError} /></div>
-  return <div className="fade-up"><PageHeading eyebrow="Better together" title="Study Pods" subtitle="Small, focused study sessions with students who are working toward the same thing." action={<Button onClick={() => setCreating(true)}><Plus size={15} />Create a pod</Button>} /><div className="mb-5 flex flex-wrap gap-3"><label className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-[#e3e9e2] bg-white px-3 text-[#909b91]"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search topics and subjects" className="min-w-0 flex-1 bg-transparent text-sm text-[#39483d] outline-none" /></label><select value={level} onChange={(event) => setLevel(event.target.value)} className="h-10 rounded-xl border border-[#e3e9e2] bg-white px-3 text-sm text-[#536056]"><option>All levels</option><option>Intermediate</option><option>Beginner friendly</option></select></div><div className="mb-5 flex items-center gap-2 rounded-xl border border-[#eee3ce] bg-[#fffaf0] p-3 text-xs leading-5 text-[#806c4b]"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#ffefcf] text-[#ad7d32]"><Clock3 size={14} /></span>Next session: <strong className="font-bold">DSA Problem Solving Sprint · Today at 7:00 PM</strong><Link to="/pods/dsa-sprint" className="ml-auto font-bold text-[#9e7135]">Open <ArrowRight size={13} className="inline" /></Link></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((pod) => <PodCard key={pod.id} pod={pod} />)}</div>{creating && <Modal title="Create a study pod" subtitle="Pick a focused goal and invite classmates to learn alongside you." onClose={() => setCreating(false)}><form onSubmit={createPod} className="space-y-4"><label className="block text-xs font-semibold text-[#59675d]">Pod topic<input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. React hooks practice" className="mt-1.5 h-10 w-full rounded-xl border border-[#e0e7df] px-3 text-sm font-normal outline-none focus:border-[#84ae8a]" /></label><label className="block text-xs font-semibold text-[#59675d]">Session goal<textarea required value={goal} onChange={(event) => setGoal(event.target.value)} rows="3" placeholder="What should the group accomplish?" className="mt-1.5 w-full rounded-xl border border-[#e0e7df] p-3 text-sm font-normal outline-none focus:border-[#84ae8a]" /></label><SelectField label="Focus session length" value={duration} options={['25', '40', '50']} onChange={setDuration} /><div className="flex justify-end gap-2 pt-2"><Button type="button" variant="outline" onClick={() => setCreating(false)}>Cancel</Button><Button type="submit">Create and enter <ArrowRight size={14} /></Button></div></form></Modal>}</div>
+  return (
+    <div className="fade-up">
+      <PageHeading
+        eyebrow="Better together"
+        title="Study Pods"
+        subtitle="Small, focused study sessions with students who are working toward the same thing."
+        action={
+          <Button onClick={() => setCreating(true)} disabled={saving}>
+            <Plus size={15} />
+            Create a pod
+          </Button>
+        }
+      />
+      <div className="mb-5 flex flex-wrap gap-3">
+        <label className="flex h-10 min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-[#e3e9e2] bg-white px-3 text-[#909b91]">
+          <Search size={15} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search topics and subjects"
+            className="min-w-0 flex-1 bg-transparent text-sm text-[#39483d] outline-none"
+          />
+        </label>
+        <select
+          value={level}
+          onChange={(event) => setLevel(event.target.value)}
+          className="h-10 rounded-xl border border-[#e3e9e2] bg-white px-3 text-sm text-[#536056]"
+        >
+          <option>All levels</option>
+          <option>Intermediate</option>
+          <option>Beginner friendly</option>
+        </select>
+      </div>
+      {podLoading && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#e8ede7] bg-white p-3 text-xs font-semibold text-[#397950]">
+          <LoaderCircle size={15} className="animate-spin" />
+          Loading study pods...
+        </div>
+      )}
+      {podError && (
+        <div role="alert" className="mb-4 rounded-xl border border-[#f0d9d6] bg-[#fff7f6] p-3 text-sm text-[#9f5148]">
+          We couldn’t refresh study pods. You can still create a pod; try reloading to view existing pods.
+        </div>
+      )}
+      <section className="mb-7">
+        <SectionHeading title="Running Study Pods" subtitle="Sessions in progress." />
+        {!podLoading && !podError && (runningPods.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {runningPods.map((pod) => <PodCard key={pod.id} pod={pod} />)}
+          </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-[#dfe7df] bg-white px-4 py-5 text-sm text-[#818c83]">
+            No study pods are running right now.
+          </p>
+        ))}
+      </section>
+      <section>
+        <SectionHeading title="Upcoming Study Pods" subtitle="Open sessions to join." />
+        {!podLoading && !podError && (upcomingPods.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {upcomingPods.map((pod) => <PodCard key={pod.id} pod={pod} />)}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Users}
+            title={query ? 'No upcoming pods match your search' : 'No upcoming study pods yet'}
+            description={query ? 'Try another topic or clear your search.' : 'Create a pod to start a focused study session.'}
+          />
+        ))}
+      </section>
+      {creating && (
+        <Modal
+          title="Create a study pod"
+          subtitle="Pick a focused goal and invite classmates to learn alongside you."
+          onClose={() => { if (!saving) setCreating(false) }}
+        >
+          <form onSubmit={createPod} className="space-y-4">
+            <label className="block text-xs font-semibold text-[#59675d]">
+              Pod topic
+              <input
+                required
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="e.g. React hooks practice"
+                className="mt-1.5 h-10 w-full rounded-xl border border-[#e0e7df] px-3 text-sm font-normal outline-none focus:border-[#84ae8a]"
+              />
+            </label>
+            <label className="block text-xs font-semibold text-[#59675d]">
+              Session goal
+              <textarea
+                required
+                value={goal}
+                onChange={(event) => setGoal(event.target.value)}
+                rows="3"
+                placeholder="What should the group accomplish?"
+                className="mt-1.5 w-full rounded-xl border border-[#e0e7df] p-3 text-sm font-normal outline-none focus:border-[#84ae8a]"
+              />
+            </label>
+            <SelectField
+              label="Focus session length"
+              value={duration}
+              options={["25", "40", "50"]}
+              onChange={setDuration}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => setCreating(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? <><LoaderCircle size={15} className="animate-spin" />Creating...</> : <>Create and enter <ArrowRight size={14} /></>}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
 }
 
 export function ResourceListPage() {
